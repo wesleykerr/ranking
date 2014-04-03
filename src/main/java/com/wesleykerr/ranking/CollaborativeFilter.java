@@ -1,18 +1,28 @@
 package com.wesleykerr.ranking;
 
 import java.io.BufferedReader;
-import java.io.File;
+import java.io.BufferedWriter;
 import java.io.FileInputStream;
+import java.io.FileOutputStream;
+import java.io.FileWriter;
 import java.io.InputStream;
 import java.io.InputStreamReader;
+import java.io.OutputStream;
+import java.io.OutputStreamWriter;
 import java.io.Reader;
+import java.io.Writer;
 import java.util.List;
-import java.util.concurrent.Callable;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-import java.util.concurrent.Future;
 import java.util.zip.GZIPInputStream;
+import java.util.zip.GZIPOutputStream;
 
+import org.apache.commons.cli.BasicParser;
+import org.apache.commons.cli.CommandLine;
+import org.apache.commons.cli.CommandLineParser;
+import org.apache.commons.cli.HelpFormatter;
+import org.apache.commons.cli.Option;
+import org.apache.commons.cli.OptionBuilder;
+import org.apache.commons.cli.Options;
+import org.apache.commons.cli.ParseException;
 import org.apache.log4j.Logger;
 
 import com.google.common.base.Preconditions;
@@ -151,42 +161,96 @@ public class CollaborativeFilter {
             result = TableUtils.rowNormalize(result);
         return result;
     }
+
+    /**
+     * run the actual collaborative filter with the given details.
+     * @param in
+     * @param out
+     * @param cf
+     */
+    public static void run(String in, String out, CollaborativeFilter cf) 
+    		throws Exception { 
+    	Table<Long,Long,Double> results = null;
+    	
+    	// Create a reader that will process the data.
+    	if (in.endsWith(".gz")) { 
+            try (InputStream inStream = new FileInputStream(in);
+                    InputStream gzipInputStream = new GZIPInputStream(inStream);
+                    Reader reader = new InputStreamReader(gzipInputStream, "UTF-8")) { 
+                results = cf.processPlayers(reader);
+            }
+    	} else { 
+            try (InputStream inStream = new FileInputStream(in);
+            		Reader reader = new InputStreamReader(inStream, "UTF-8")) { 
+                results = cf.processPlayers(reader);
+            }
+    	}
+    	
+    	// Create a writer that we we can write the data out to.
+    	if (out.endsWith(".gz")) {
+    		try (OutputStream outStream = new FileOutputStream(out);
+    				OutputStream gzipOutStream = new GZIPOutputStream(outStream);
+    				Writer write = new OutputStreamWriter(gzipOutStream, "UTF-8")) { 
+    			TableUtils.writeCSVMatrix(results, write);
+    		}
+    	} else { 
+    		try (BufferedWriter bw = new BufferedWriter(new FileWriter(out))) {
+    	        TableUtils.writeCSVMatrix(results, bw);
+    		}
+    	}
+    }
+    
+    
+    public static Options getOptions() { 
+    	Options options = new Options();
+    	
+    	@SuppressWarnings("static-access")
+		Option input = OptionBuilder
+    			.withLongOpt("input")
+    			.withArgName("input")
+    			.hasArg()
+    			.isRequired()
+    			.create("i");
+    	options.addOption(input);
+
+    	@SuppressWarnings("static-access")
+		Option output = OptionBuilder
+    			.withLongOpt("output")
+    			.withArgName("output")
+    			.hasArg()
+    			.isRequired()
+    			.create("o");
+    	options.addOption(output);
+
+    	return options;
+    }
+    
+    public static void printHelp(Options options) { 
+    	HelpFormatter formatter = new HelpFormatter();
+    	formatter.printHelp( "CollaborativeFilter", options );
+    }
     
     public static void main(String[] args) throws Exception { 
-    	// TODO 
-    	//   pass in the input file
-    	//   pass in the output file
-    	//   pass in the emitter name
-    	//   pass in threshold
+    	Options options = getOptions();
+    	CommandLineParser parser = new BasicParser();
     	
-        ExecutorService service = Executors.newFixedThreadPool(3);
+    	try {
+    		CommandLine line = parser.parse(options, args);
+        	String input = line.getOptionValue("i");
+        	String output = line.getOptionValue("o");
+    		
+        	CollaborativeFilter cf = CollaborativeFilter.Builder.create()
+        			.withEmitter(Emitter.cosineWeighted)
+        			.withRowNorm(false)
+        			.withThreshold(0.5)
+        			.build();
+        	CollaborativeFilter.run(input, output, cf);
+    		
+    	} catch (ParseException exp) { 
+    		printHelp(options);
+    		System.exit(1);
+    	}
 
-        List<Future<Boolean>> futures = Lists.newArrayList();
-        futures.add(service.submit(new Callable<Boolean>() {
-            @Override
-            public Boolean call() throws Exception {
-                CollaborativeFilter cf = CollaborativeFilter.Builder.create()
-                        .withEmitter(Emitter.cosineWeighted)
-                        .withRowNorm(false)
-                        .withThreshold(0.5d)
-                        .build();
-                
-                File inputFile = new File("/data/steam/ratings-file.gz");
-                try (InputStream inStream = new FileInputStream(inputFile);
-                        InputStream gzipInputStream = new GZIPInputStream(inStream);
-                        Reader reader = new InputStreamReader(gzipInputStream, "UTF-8")) { 
-                    Table<Long,Long,Double> results = cf.processPlayers(reader);
-                    // TODO: make this work again.
-                    TableUtils.writeCSVMatrix(results, new File("/data/steam/model.csv"));
-                    return Boolean.TRUE;
-                }
-            } 
-        }));
-
-        for (Future<Boolean> f : futures) { 
-            LOGGER.info("Received: " + f.get());
-        }
-        
-        service.shutdown();
+    	
     }
 }

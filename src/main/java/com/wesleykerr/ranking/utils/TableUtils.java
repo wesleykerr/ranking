@@ -1,8 +1,6 @@
 package com.wesleykerr.ranking.utils;
 
-import java.io.BufferedWriter;
-import java.io.File;
-import java.io.FileWriter;
+import java.io.Writer;
 import java.util.Set;
 
 import org.apache.log4j.Logger;
@@ -99,30 +97,27 @@ public class TableUtils {
     /**
      * writes the given table to a CSV file with headers and row names.
      * @param t1
-     * @param outputFile
+     * @param output
      */
-    public static <T extends Comparable<T>> void writeCSVMatrix(Table<T,T,Double> t1, File outputFile) { 
+    public static <T extends Comparable<T>> void writeCSVMatrix(Table<T,T,Double> t1, Writer out) 
+    		throws Exception { 
         LOGGER.info("begin writeCSVMatrix");
         Set<T> keySet = Sets.newTreeSet();
         keySet.addAll(t1.rowKeySet());
         keySet.addAll(t1.columnKeySet());
         
-        try (BufferedWriter out = new BufferedWriter(new FileWriter(outputFile))) { 
-            out.write("item");
-            for (T key : keySet) { 
-                out.write("," + key.toString());
+        out.write("item");
+        for (T key : keySet) { 
+            out.write("," + key.toString());
+        }
+        out.write("\n");
+        
+        for (T key1 : keySet) { 
+            out.write(key1.toString());
+            for (T key2 : keySet) { 
+                out.write("," + t1.get(key1, key2).toString());
             }
             out.write("\n");
-            
-            for (T key1 : keySet) { 
-                out.write(key1.toString());
-                for (T key2 : keySet) { 
-                    out.write("," + t1.get(key1, key2).toString());
-                }
-                out.write("\n");
-            }
-        } catch (Exception e) { 
-            throw new RuntimeException(e);
         }
         LOGGER.info("end writeCSVMatrix");
     }
